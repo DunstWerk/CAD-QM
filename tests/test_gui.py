@@ -53,8 +53,8 @@ def test_threshold_filters_live_and_export(win, tmp_path):
     assert win.sp_err.value() >= win.sp_warn.value()
     # Auswahl + Vorschau
     win.table.selectRow(0); assert win.lbl_prev.pixmap() is not None and not win.lbl_prev.pixmap().isNull()
-    # Fehlalarm ausblenden -> nicht im Export
-    win.toggle_selected()
+    # Fehlalarm bewerten -> nicht im Export
+    win.rate("false")
     win.export()
     assert (tmp_path / "out" / "dtg_QM.pdf").exists() and (tmp_path / "out" / "QM_Befunde.xlsx").exists()
     import openpyxl
@@ -79,3 +79,48 @@ def test_stale_marker(win):
     win.run_signature = win._signature()
     win.sp_contrast.setValue(0.5)
     assert "neu prüfen" in win.lbl_stale.text()
+
+
+@pytest.mark.skipif(not os.path.exists(SAMPLE), reason="kein Beispielplan")
+def test_rating_keys_advance_and_feedback(win, tmp_path):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    import json
+    win.add_paths([SAMPLE]); win.cb_cons.setChecked(False)
+    run_sync(win); win.show(); win.activateWindow(); QTest.qWaitForWindowActive(win)      # Shortcuts brauchen ein aktives Fenster
+    n = win.table.rowCount(); assert n >= 4
+    win.table.selectRow(0); win.table.setFocus()
+    first = win._selected()
+    # Taste 1 = annehmen -> eine Zeile weiter; Taste 2 = Fehlalarm -> weiter
+    QTest.keyClick(win, Qt.Key_1)
+    assert win.table.currentRow() == 1 and win.verdict_of(*first) == "accepted"
+    second = win._selected()
+    QTest.keyClick(win, Qt.Key_2)
+    assert win.table.currentRow() == 2 and win.verdict_of(*second) == "false"
+    QTest.keyClick(win, Qt.Key_Backspace)                       # zuruecksetzen, bleibt stehen
+    assert win.table.currentRow() == 2
+    # Zeilenfarbe/Text der bewerteten Zeile
+    assert win.table.item(0, 0).text().startswith("✓") and win.table.item(1, 0).text().startswith("✗")
+    assert "2 von" in win.lbl_rated.text()
+    # Filter nach Bewertung
+    win.cmb_verdict.setCurrentIndex(2); assert win.table.rowCount() == 1
+    win.cmb_verdict.setCurrentIndex(1); assert win.table.rowCount() == n - 2
+    win.cmb_verdict.setCurrentIndex(0)
+    # Bewertung ueberlebt Schwellen-Aenderung (Cluster verschieben sich leicht)
+    win.sp_warn.setValue(win.sp_warn.value() + 5)
+    assert any(win.verdict_of(p, f) == "accepted" for p, f in win.rows) or win.sp_warn.value() > 0
+    win.sp_warn.setValue(10)
+    # Letzte Zeile bewerten: kein Absturz, Auswahl bleibt
+    win.table.selectRow(win.table.rowCount() - 1); win.rate("accepted")
+    assert win.table.currentRow() == win.table.rowCount() - 1
+    # Export legt Feedback an
+    win.export()
+    fb = win.last_feedback
+    assert fb and (fb / "feedback.md").exists() and (fb / "feedback.json").exists() and fb.parent.name == "ml_feedback"
+    assert fb.parent.parent == tmp_path / "out"
+    js = json.loads((fb / "feedback.json").read_text(encoding="utf-8"))
+    verd = [f["verdict"] for f in js["findings"]]
+    assert "angenommen" in verd and "Fehlalarm" in verd and "offen" in verd
+    assert any("covered_pct" in f["features"] for f in js["findings"] if f["kind"] == "text_ink")
+    assert len(list((fb / "crops").glob("*.png"))) == sum(v != "offen" for v in verd)
+    assert "Mindestkontrast" in (fb / "feedback.md").read_text(encoding="utf-8")

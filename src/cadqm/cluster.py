@@ -34,7 +34,9 @@ def cluster(findings: list[Finding], margin: float = 4.0) -> list[Finding]:
         top = max(g, key=lambda f: f.value)
         out.append(Finding(top.type, top.page, bb, "error" if any(f.severity == "error" for f in g) else "warn",
                            top.value, " | ".join(texts[:4]) + (" …" if len(texts) > 4 else ""), top.detail,
-                           "+".join(sorted({f.kind for f in g if f.kind})), extra={"count": len(g)}))
+                           "+".join(sorted({f.kind for f in g if f.kind})),
+                           extra={**top.extra, "count": len(g), "members": [{"kind": f.kind, "severity": f.severity, "value": f.value, "text": f.text,
+                                                                "bbox": [round(v, 1) for v in f.bbox], "extra": f.extra} for f in g]}))
     out.sort(key=lambda f: (f.page, f.type, f.bbox[1], f.bbox[0]))
     counter: dict[str, int] = {}
     for f in out:

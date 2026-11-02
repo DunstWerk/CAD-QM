@@ -23,3 +23,9 @@ Schwellen und Farben: `config/default.yaml`. Beispielpläne liegen in `tests/dat
 - Zeile wählen → **Vorschau** mit Rahmen um die Fundstelle. Haken in der ersten Spalte entfernen = Fehlalarm, wird nicht exportiert.
 - **Wort zur Whitelist hinzufügen** (bei Rechtschreibung) schreibt das Wort in die Whitelist-Datei und blendet es sofort aus.
 - Linux-Hinweis: Qt braucht `libegl1`, `libgl1`, `libxkbcommon0` (auf Desktop-Systemen meist vorhanden).
+
+### Befunde bewerten und Feedback für die Kalibrierung
+
+- Befund wählen, dann **`1` = Annehmen** (echter Fehler) oder **`2` = Fehlalarm** (oder die Buttons unten rechts). Die Auswahl springt danach automatisch zur nächsten Zeile; `Backspace` setzt die Bewertung zurück, die Pfeiltasten blättern. Der Filter „Alle Bewertungen“ zeigt nur offene/angenommene/Fehlalarm-Befunde.
+- Fehlalarme kommen nicht in die markierten PDFs/Excel. Angenommene und offene Befunde schon (Excel-Spalte „Bewertung“).
+- **Jeder Export** legt zusätzlich `<Ausgabe>/ml_feedback/<Zeitstempel>/` an: `feedback.md` (lesbar: Einstellungen, Trefferquote je Art, alle Befunde, Details der bewerteten), `feedback.json` (alle Messwerte je Befund inkl. Einzelbefunde und der unter der Schwelle verborgenen Rohbefunde) und `crops/` (Bildausschnitt je bewertetem Befund). Diese Dateien können für die Feinabstimmung der Schwellwerte/Regeln weitergegeben werden.

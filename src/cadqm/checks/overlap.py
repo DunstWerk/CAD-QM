@@ -41,13 +41,15 @@ def text_vs_ink(path: str, pno: int, page: pymupdf.Page, items: list[TextItem], 
             continue
         sl = (slice(y0, y1), slice(x0, x1))
         covered = g & covered_all[sl]
+        lowc = np.zeros_like(g)
         light = cl.ink_weight(it.color) < o["min_text_weight"]
         if light:       # hellgrauer (Architekten-)Text: nur melden, wenn DUNKLE Tinte ihn verdeckt
             dark_bg = (bg[sl] <= cl.dark_lum) | _sat(ink[sl])
             bad = covered & dark_bg
         else:
             lt = 0.299 * it.color[0] + 0.587 * it.color[1] + 0.114 * it.color[2]
-            bad = covered | (g & (np.abs(bg[sl] - lt) < o["contrast_min"]))
+            lowc = g & (np.abs(bg[sl] - lt) < o["contrast_min"])
+            bad = covered | lowc
         pct = 100.0 * int(bad.sum()) / n
         if debug is not None:
             debug.append((it, pct))
@@ -55,7 +57,10 @@ def text_vs_ink(path: str, pno: int, page: pymupdf.Page, items: list[TextItem], 
         if sev:
             out.append(Finding(OVERLAP, pno, it.bbox, sev, round(pct, 1), it.text,
                                "Text von Grafik verdeckt/kontrastarm" + (" (hellgrauer Text)" if light else ""),
-                               "text_ink", extra={"layer": it.layer}))
+                               "text_ink", extra={"layer": it.layer, "font_size": round(it.size, 1), "text_color": [round(c, 2) for c in it.color],
+                                                  "text_class": "light" if light else "dark", "glyph_px": n, "scale": round(s, 2),
+                                                  "covered_pct": round(100.0 * int(covered.sum()) / n, 1),
+                                                  "lowcontrast_pct": round(100.0 * int(lowc.sum()) / n, 1)}))
     return out
 
 
@@ -83,5 +88,7 @@ def text_vs_text(pno: int, items: list[TextItem], cl: Classifier, cfg: dict, zon
             if sev:
                 u = boxes[a].union(boxes[b]).bounds
                 out.append(Finding(OVERLAP, pno, u, sev, round(ratio, 1), f"{ia.text} / {cand[b].text}",
-                                   "Texte überlagern sich", "text_text"))
+                                   "Texte überlagern sich", "text_text",
+                                   extra={"texts": [ia.text, cand[b].text], "font_sizes": [round(ia.size, 1), round(cand[b].size, 1)],
+                                          "layers": [ia.layer, cand[b].layer], "sources": [ia.source, cand[b].source]}))
     return out

@@ -18,3 +18,14 @@ def apply_thresholds(findings: list[Finding], o: dict) -> list[Finding]:
         elif f.value >= warn:
             out.append(replace(f, severity="warn"))
     return out
+
+
+def below_threshold(findings: list[Finding], o: dict) -> list[Finding]:
+    """Ueberlappungs-Rohbefunde, die unter den Schwellen liegen (werden nicht angezeigt) - fuer das Feedback."""
+    out = []
+    for f in findings:
+        if f.type == OVERLAP:
+            warn = o["text_text_warn_pct"] if f.kind == "text_text" else o["warn_pct"]
+            if f.value < warn:
+                out.append(f)
+    return out

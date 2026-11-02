@@ -101,8 +101,8 @@ def check_set(infos: list[PlanInfo], cfg: dict) -> dict[tuple[str, int], list[Fi
     cc = cfg["consistency"]
     out: dict[tuple[str, int], list[Finding]] = {(i.path, i.pno): [] for i in infos}
 
-    def add(i: PlanInfo, bbox, sev, text, detail, kind):
-        out[(i.path, i.pno)].append(Finding(CONSISTENCY, i.pno, bbox, sev, 0.0, text, detail, kind))
+    def add(i: PlanInfo, bbox, sev, text, detail, kind, **extra):
+        out[(i.path, i.pno)].append(Finding(CONSISTENCY, i.pno, bbox, sev, 0.0, text, detail, kind, extra={"plan": i.name, **extra}))
 
     # A: Plannummer <-> Dateiname
     if cc["rules"]["plannummer_filename"]:
@@ -130,7 +130,7 @@ def check_set(infos: list[PlanInfo], cfg: dict) -> dict[tuple[str, int], list[Fi
                 if f and _norm(f.text) != top:
                     add(i, f.bbox, "error" if strict else "warn", f.text,
                         f"{fname} uneinheitlich im Plansatz: „{f.text}“ statt „{top}“" if strict else
-                        f"{fname} uneinheitlich im Plansatz: „{f.text}“ ({len(set(_norm(v) for v in vals.values()))} Varianten)", "set_field")
+                        f"{fname} uneinheitlich im Plansatz: „{f.text}“ ({len(set(_norm(v) for v in vals.values()))} Varianten)", "set_field", field=fname)
     # D: Schreibvarianten (Bindestrich/Leerzeichen/Umlaut) ueber den ganzen Satz
     if cc["rules"]["variants"]:
         occ: dict[str, dict[str, list[tuple[PlanInfo, TextItem]]]] = collections.defaultdict(lambda: collections.defaultdict(list))
