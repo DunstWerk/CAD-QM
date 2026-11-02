@@ -39,3 +39,28 @@ spelling:
   typo_distance: 2           # Vorschlag mit Editierabstand <= : "Fehler" (wahrscheinlicher Tippfehler), sonst "Hinweis"
   skip_single_letter_neighbours: true
   whitelist: ["config/whitelist.txt"]   # eine Zeile pro Wort, '#' = Kommentar; zusaetzlich --whitelist
+
+consistency:
+  fields:                      # Feld -> moegliche Beschriftungen im Plankopf (je Projekt/Vorlage ergaenzen)
+    Plannummer: ["Plannummer", "Plan-Nr", "Plan Nr", "Plannr"]
+    Index: ["Index"]
+    Status: ["Status"]
+    Projekt: ["Projekt"]
+    Stand: ["Stand"]
+    Leistungsphase: ["Leistungsphase", "Leistungsphase / Phase"]
+    Maßstab: ["Maßstab"]
+    Planinhalt: ["Planinhalt", "Planbezeichnung"]
+    Bauherr: ["Bauherr"]
+    Architekt: ["Architekt"]
+    Planverfasser: ["Planverfasser"]
+  max_value_lines: {Bauherr: 5, Planverfasser: 5, Architekt: 5, Projekt: 2, Planinhalt: 2}
+  rules:
+    plannummer_filename: true
+    index_table: true
+    set_equal: [Projekt, Status, Stand, Leistungsphase, Bauherr, Planverfasser]
+    variants: true
+    kote_format: true
+    legend: true
+  variant_min_len: 5
+  kote_min_total: 15
+  kote_minority_max_share: 0.25

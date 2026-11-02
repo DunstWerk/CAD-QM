@@ -40,3 +40,23 @@ def ground_truth(old: str, new: str) -> list[tuple[float, float, float, float]]:
         r.normalize()
         gt.append(tuple(r))
     return gt
+
+
+def check_set_files(paths: list[str], cfg: dict | None = None, checks=("overlap", "spelling", "consistency"),
+                    whitelist_files=()) -> dict[str, list[Finding]]:
+    """Alle Pruefungen fuer mehrere PDFs; Konsolidität laeuft ueber den ganzen Satz. Rueckgabe: Pfad -> Befunde."""
+    import os
+    from .checks.consistency import build_info, check_set
+    cfg = cfg or load_config()
+    res = {str(p): check_pdf(str(p), cfg, tuple(c for c in checks if c != "consistency"), whitelist_files) for p in paths}
+    if "consistency" in checks and cfg.get("consistency"):
+        cl = Classifier(cfg); infos = []
+        for p in paths:
+            doc = pymupdf.open(p)
+            stem = os.path.splitext(os.path.basename(str(p)))[0]
+            for pno, page in enumerate(doc):
+                infos.append(build_info(str(p), pno, page, doc.metadata.get("title") or "", cfg, cl,
+                                        stem if len(doc) == 1 else f"{stem}[{pno + 1}]"))
+        for (path, _), fs in check_set(infos, cfg).items():
+            res[path] += fs
+    return res

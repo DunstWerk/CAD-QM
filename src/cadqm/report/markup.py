@@ -19,7 +19,7 @@ def add_markup(doc: pymupdf.Document, findings: list[Finding], cfg: dict) -> Non
         page = doc[f.page]
         lw, fs = _scaled(page)
         col = tuple(colors[f.type])
-        pad = 1.5 * lw
+        pad = {OVERLAP: 1.5, SPELLING: 3.0, CONSISTENCY: 4.5}[f.type] * lw       # konzentrisch gestaffelt: Mehrfachmarken verdecken sich nicht
         r = pymupdf.Rect(f.bbox) + (-pad, -pad, pad, pad)
         d = page.derotation_matrix                                # Annotationen leben im unrotierten Raum
         title = f"{f.id} {TYPE_NAME[f.type]}"
@@ -30,9 +30,17 @@ def add_markup(doc: pymupdf.Document, findings: list[Finding], cfg: dict) -> Non
         a.set_info(title="CAD-QM", content=info)
         a.set_oc(ocg); a.update()
         w = fs * (len(f.id) * 0.62 + 1.0)
-        lab = pymupdf.Rect(r.x0, r.y0 - fs * 1.7, r.x0 + w, r.y0)
-        if lab.y0 < 0:
+        # Label je Typ an anderer Ecke: Ü oben links, R unten links, K unten rechts
+        if f.type == CONSISTENCY:
+            lab = pymupdf.Rect(r.x1 - w, r.y1, r.x1, r.y1 + fs * 1.7)
+        elif f.type == SPELLING:
             lab = pymupdf.Rect(r.x0, r.y1, r.x0 + w, r.y1 + fs * 1.7)
+        else:
+            lab = pymupdf.Rect(r.x0, r.y0 - fs * 1.7, r.x0 + w, r.y0)
+        if lab.y0 < 0:
+            lab.y0, lab.y1 = r.y1, r.y1 + fs * 1.7
+        if lab.y1 > page.rect.height:
+            lab.y0, lab.y1 = r.y0 - fs * 1.7, r.y0
         t = page.add_freetext_annot(lab * d, f.id, fontsize=fs, fontname="helv", text_color=(0, 0, 0),
                                     fill_color=col, rotate=page.rotation, align=pymupdf.TEXT_ALIGN_CENTER)
         t.set_info(title="CAD-QM")                                # Inhalt = nur Index (sichtbarer Text)
