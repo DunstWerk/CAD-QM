@@ -1,20 +1,22 @@
-# Farbklassifikation (RGB 0..1). Alles, was R=G=B und nicht (nahezu) schwarz ist, gilt als Architekt.
-colors:
-  ours:            # unsere Planung: Schwarz + Gewerkefarben
-    - [0.0, 0.0, 0.0]
-    - [0.0, 0.52, 0.0]
-    - [0.0, 0.0, 1.0]
-    - [1.0, 0.0, 0.0]
-    - [1.0, 0.0, 0.75]
-    - [0.07, 0.525, 0.34]
-  tolerance: 0.06
-  gray_black_cutoff: 0.12   # Grau darunter zaehlt als Schwarz (= unsere Planung)
-  gray_white_cutoff: 0.97   # Grau darueber zaehlt als Weiss/Hintergrund
+# Tinten-Gewicht nach Leuchtdichte/Saettigung: dunkle oder gesaettigte Tinte zaehlt voll
+# (Schwarz, Gewerkefarben - auch vom Architekt), helle Grautoene nur reduziert.
+ink:
+  dark_lum: 0.45        # Leuchtdichte <= : Gewicht 1.0 (unabhaengig von der Saettigung)
+  light_lum: 0.85       # Leuchtdichte >= : Gewicht 0.0 (Hintergrund/Flaeche)
+  saturated: 0.25       # Saettigung (max-min) >= : gilt als Gewerkefarbe, Gewicht 1.0 bis 0.9 Lum.
+  full_weight: 0.9      # ab diesem Gewicht = "dark" (voll)
+  min_weight: 0.05      # darunter = "none"
 
-# Ausschlusszonen als Anteil der Seite (x0,y0,x1,y1 in 0..1, Ansicht nach Rotation, Ursprung links oben)
-exclude_zones:
-  - name: Plankopf_Legende
-    rect: [0.885, 0.0, 1.0, 1.0]
+# Texte des Architekten (nicht auf Rechtschreibung pruefen)
+architect_text:
+  layer_patterns: ["|"]     # Teilstrings; "|" = XREF-Ebene (z. B. "325_AVI_G1|_TEXT")
+  max_weight: 0.6           # Textfarbe mit Gewicht darunter = Architekt (hellgrau)
+
+# Plankopf/Legende (rechter Streifen): automatisch ueber "Legende*"-Ankertexte, sonst Fallback
+title_block:
+  anchor_regex: "^\\s*Legende"
+  margin: 0.01              # Anteil der Seitenbreite links vom Anker
+  fallback_rect: [0.85, 0.0, 1.0, 1.0]   # Anteile (x0,y0,x1,y1), sichtbarer Raum, links oben
 
 overlap:
   warn_pct: 10

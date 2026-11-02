@@ -16,34 +16,48 @@ class TextItem:
     size: float
     direction: tuple[float, float]            # Schreibrichtung (dx,dy)
     source: str                               # "truetype" | "shx"
+    layer: str = ""                           # OCG-/Ebenenname (leer = unbekannt)
 
 
 def _rgb(v: int) -> tuple[float, float, float]:
     return ((v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255)
 
 
+def _layer_map(page: pymupdf.Page) -> dict[tuple[float, float], str]:
+    """Ebene je Text-Span, Schluessel = gerundeter Ursprung des ersten Zeichens (unrotierter Raum)."""
+    m: dict[tuple[float, float], str] = {}
+    for t in page.get_texttrace():
+        ch = t.get("chars")
+        if ch and t.get("layer"):
+            o = ch[0][2]
+            m[(round(o[0], 1), round(o[1], 1))] = t["layer"]
+    return m
+
+
 def extract_truetype(page: pymupdf.Page) -> list[TextItem]:
+    """get_text() liefert Koordinaten im UNROTIERTEN Raum -> hier in den sichtbaren Raum umrechnen."""
     items: list[TextItem] = []
     seen: set[tuple] = set()
+    rm = page.rotation_matrix
+    layers = _layer_map(page)
     for blk in page.get_text("dict")["blocks"]:
         for line in blk.get("lines", []):
-            spans = [s for s in line["spans"] if s["text"].replace("\xa0", " ").strip()]
-            if not spans:
-                continue
-            # Doppelt gesetzte Spans (gleicher Text, gleiche Lage) verwerfen
-            for s in spans:
-                x0, y0, x1, y1 = s["bbox"]
-                key = (s["text"], round(x0, 1), round(y0, 1), round(x1, 1), round(y1, 1))
-                if key in seen:
+            d = pymupdf.Point(line["dir"]) * pymupdf.Matrix(rm.a, rm.b, rm.c, rm.d, 0, 0)
+            for s in line["spans"]:
+                txt = s["text"].replace("\xa0", " ").strip()
+                if not txt:
+                    continue
+                r = pymupdf.Rect(s["bbox"]) * rm
+                r.normalize()
+                key = (txt, round(r.x0, 1), round(r.y0, 1), round(r.x1, 1), round(r.y1, 1))
+                if key in seen:                      # doppelt gesetzter Text
                     continue
                 seen.add(key)
+                o = s["origin"]
                 items.append(TextItem(
-                    text=s["text"].replace("\xa0", " ").strip(),
-                    bbox=(x0, y0, x1, y1),
-                    color=_rgb(s["color"]),
-                    size=s["size"],
-                    direction=tuple(line["dir"]),
-                    source="truetype",
+                    text=txt, bbox=(r.x0, r.y0, r.x1, r.y1), color=_rgb(s["color"]),
+                    size=s["size"], direction=(round(d.x, 3), round(d.y, 3)), source="truetype",
+                    layer=layers.get((round(o[0], 1), round(o[1], 1)), ""),
                 ))
     return items
 
