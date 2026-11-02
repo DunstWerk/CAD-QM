@@ -83,5 +83,5 @@ def text_vs_text(pno: int, items: list[TextItem], cl: Classifier, cfg: dict, zon
             if sev:
                 u = boxes[a].union(boxes[b]).bounds
                 out.append(Finding(OVERLAP, pno, u, sev, round(ratio, 1), f"{ia.text} / {cand[b].text}",
-                                   "Texte ueberlagern sich", "text_text"))
+                                   "Texte überlagern sich", "text_text"))
     return out

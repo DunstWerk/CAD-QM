@@ -13,7 +13,8 @@ def main(argv=None) -> int:
     m = sub.add_parser("smoke", help="Alle PDFs eines Ordners durchlaufen (Laufzeit, Textzahlen, Plankopf) + Debug-PNGs")
     m.add_argument("folder"); m.add_argument("outdir"); m.add_argument("--config"); m.add_argument("--scale", type=float, default=0.25)
     c = sub.add_parser("check", help="Plan pruefen und Befunde ausgeben")
-    c.add_argument("pdf"); c.add_argument("--config"); c.add_argument("--top", type=int, default=30)
+    c.add_argument("pdf", help="PDF-Datei oder Ordner"); c.add_argument("--config"); c.add_argument("--top", type=int, default=30)
+    c.add_argument("--out", help="Ausgabeordner: markierte PDFs + QM_Befunde.xlsx")
     g = sub.add_parser("eval-gt", help="Befunde gegen von Hand markierte Stellen (alt-/neu-PDF) auswerten")
     g.add_argument("old_dir"); g.add_argument("new_dir"); g.add_argument("--config"); g.add_argument("--radius", type=float, default=12.0)
     a = ap.parse_args(argv)
@@ -28,11 +29,29 @@ def main(argv=None) -> int:
             st = debug_png(page, cfg, str(out / (f.stem + ".png")), a.scale)
             print(f"{f.name:12s} {page.rect.width:.0f}x{page.rect.height:.0f} rot{page.rotation:3d} {time.time()-t0:5.1f}s {st}")
     if a.cmd == "check":
+        import pathlib
+        from .cluster import cluster
         from .runner import check_pdf
-        fs = check_pdf(a.pdf, load_config(a.config))
-        print(f"{len(fs)} Befunde ({sum(f.severity == 'error' for f in fs)} error)")
-        for f in fs[: a.top]:
-            print(f"  {f.severity:5s} {f.kind:9s} {f.value:5.1f}%  {[round(v) for v in f.bbox]}  {f.text[:50]!r}")
+        from .report.markup import add_markup, add_summary
+        from .report.listing import write_xlsx
+        cfg = load_config(a.config)
+        src = pathlib.Path(a.pdf)
+        files = sorted(src.glob("*.pdf")) if src.is_dir() else [src]
+        rows = []
+        for f in files:
+            fs = cluster(check_pdf(str(f), cfg))
+            print(f"{f.name}: {len(fs)} Befunde ({sum(x.severity == 'error' for x in fs)} Fehler)")
+            for x in fs[: a.top if not a.out else 0]:
+                print(f"  {x.id} {x.severity:5s} {x.kind:9s} {x.value:5.1f}%  {[round(v) for v in x.bbox]}  {x.text[:50]!r}")
+            rows += [(f.stem, x) for x in fs]
+            if a.out:
+                out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
+                doc = pymupdf.open(f)
+                add_markup(doc, fs, cfg); add_summary(doc, fs, cfg, f.stem)
+                doc.save(out / f"{f.stem}_QM.pdf", garbage=3, deflate=True)
+        if a.out:
+            write_xlsx(rows, str(pathlib.Path(a.out) / "QM_Befunde.xlsx"))
+            print(f"-> {a.out}")
     if a.cmd == "eval-gt":
         import pathlib, time
         from .runner import check_pdf, ground_truth
