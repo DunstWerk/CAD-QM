@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import pymupdf
-from PySide6.QtCore import QObject, QSettings, Qt, QThread, Signal
+from PySide6.QtCore import QObject, QSettings, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QImage, QKeySequence, QPainter, QPen, QPixmap, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
                                QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox,
@@ -54,14 +54,15 @@ class Worker(QThread):
             self.failed.emit(f"{type(e).__name__}: {e}")
 
 
-def render_preview(path: str, page_no: int, bbox, color, width_px: int = 560) -> QPixmap:
-    """Ausschnitt um den Befund aus dem ORIGINAL-PDF, Befund umrahmt."""
+def render_preview(path: str, page_no: int, bbox, color, width_px: int = 560, zoom_factor: float = 1.0) -> QPixmap:
+    """Ausschnitt um den Befund aus dem ORIGINAL-PDF, Befund umrahmt. zoom_factor > 1 = naeher heran (kleinerer Ausschnitt)."""
     doc = pymupdf.open(path)
     page = doc[page_no]
     b = pymupdf.Rect(bbox)
-    pad = max(50.0, 3.0 * max(b.width, b.height))
+    pad = max(50.0, 3.0 * max(b.width, b.height)) / max(zoom_factor, 0.05)
+    pad = max(pad, 1.5 * max(b.width, b.height) / 2)                       # Befund bleibt immer ganz sichtbar
     clip = (b + (-pad * 1.6, -pad, pad * 1.6, pad)) & page.rect
-    zoom = min(8.0, width_px / max(clip.width, 1.0))
+    zoom = min(40.0, width_px / max(clip.width, 1.0))
     pm = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=clip, colorspace=pymupdf.csRGB, alpha=False, annots=False)
     img = QImage(pm.samples, pm.width, pm.height, pm.stride, QImage.Format_RGB888).copy()
     qp = QPainter(img)
@@ -82,6 +83,7 @@ class MainWindow(QMainWindow):
         self.verdicts: dict[tuple, tuple[str, tuple]] = {}      # Befundschluessel -> (Urteil, bbox); Urteil 'accepted' | 'false'
         self.view: list[tuple[str, Finding]] = []
         self.last_feedback: Path | None = None
+        self.whitelist_actions: list[dict] = []
         self.session_whitelist: set[str] = set()
         self.worker: Worker | None = None
         self.run_signature: tuple | None = None
@@ -141,6 +143,10 @@ class MainWindow(QMainWindow):
         g_io = QGroupBox("Dateien"); fi = QFormLayout(g_io)
         rw = QHBoxLayout(); rw.addWidget(self.ed_white); rw.addWidget(b_wf); fi.addRow("Whitelist", rw)
         ro = QHBoxLayout(); ro.addWidget(self.ed_out); ro.addWidget(b_of); fi.addRow("Ausgabe", ro)
+        self.cmb_wl = QComboBox(); self.cmb_wl.addItems(["Fehlalarm (2): Wort ist korrekt", "Annehmen (1)", "nur über den Button"])
+        self.cmb_wl.setToolTip("Bei Rechtschreibung-Befunden: welche Bewertung nimmt das Wort direkt in die Whitelist auf?")
+        self.cmb_wl.currentIndexChanged.connect(lambda *_: self._update_hint())
+        fi.addRow("Wort → Whitelist bei", self.cmb_wl)
         self.cb_feedback = QCheckBox("Bewertungs-Feedback (ML) mit exportieren"); self.cb_feedback.setChecked(True)
         self.cb_feedback.setToolTip("Legt bei jedem Export <Ausgabe>/ml_feedback/<Zeitstempel>/ an: feedback.md, feedback.json, crops/")
         fi.addRow(self.cb_feedback)
@@ -186,11 +192,21 @@ class MainWindow(QMainWindow):
             QShortcut(QKeySequence(key), self, activated=lambda v=v: self.rate(v))
         QShortcut(QKeySequence("Backspace"), self, activated=lambda: self.rate(None, advance=False))
         self.lbl_rated = QLabel(""); self.lbl_rated.setAlignment(Qt.AlignRight)
-        hint = QLabel("<small>Tasten: <b>1</b> annehmen · <b>2</b> Fehlalarm · <b>Backspace</b> zurücksetzen · ↑/↓ blättern (Tabelle)</small>")
+        self.hint = QLabel(); self.hint.setWordWrap(True)
         rb = QHBoxLayout(); rb.addWidget(self.btn_accept); rb.addWidget(self.btn_false)
+        self.sl_zoom = QSlider(Qt.Horizontal); self.sl_zoom.setRange(25, 1000); self.sl_zoom.setValue(100)
+        self.sl_zoom.setToolTip("Zoom der Vorschau (100 % = Standardausschnitt, mehr = näher heran)")
+        self.lbl_zoom = QLabel("100 %"); self.lbl_zoom.setMinimumWidth(48)
+        b_z = QPushButton("100 %"); b_z.setMaximumWidth(52); b_z.setFocusPolicy(Qt.NoFocus); b_z.clicked.connect(lambda: self.sl_zoom.setValue(100))
+        self.sl_zoom.setFocusPolicy(Qt.NoFocus)                                  # Fokus bleibt in der Tabelle (Tasten 1/2, Pfeile)
+        self._zoom_timer = QTimer(self); self._zoom_timer.setSingleShot(True); self._zoom_timer.setInterval(90)
+        self._zoom_timer.timeout.connect(self.show_preview)
+        self.sl_zoom.valueChanged.connect(lambda v: (self.lbl_zoom.setText(f"{v} %"), self._zoom_timer.start()))
+        zl = QHBoxLayout(); zl.addWidget(QLabel("<b>Vorschau</b>")); zl.addStretch(1); zl.addWidget(QLabel("Zoom")); zl.addWidget(self.sl_zoom, 1)
+        zl.addWidget(self.lbl_zoom); zl.addWidget(b_z)
         right = QWidget(); lr = QVBoxLayout(right); lr.setContentsMargins(0, 0, 0, 0)
-        lr.addWidget(QLabel("<b>Vorschau</b>")); lr.addWidget(sc, 1); lr.addWidget(self.lbl_info); lr.addWidget(self.btn_white)
-        lr.addWidget(self.lbl_rated); lr.addLayout(rb); lr.addWidget(hint)
+        lr.addLayout(zl); lr.addWidget(sc, 1); lr.addWidget(self.lbl_info); lr.addWidget(self.btn_white)
+        lr.addWidget(self.lbl_rated); lr.addLayout(rb); lr.addWidget(self.hint)
 
         split = QSplitter(); split.addWidget(left); split.addWidget(mid); split.addWidget(right)
         split.setStretchFactor(0, 0); split.setStretchFactor(1, 3); split.setStretchFactor(2, 2); split.setSizes([310, 820, 380])
@@ -214,12 +230,16 @@ class MainWindow(QMainWindow):
                 sp.setValue(float(v))
         self.ed_white.setText(s.value("whitelist", str(writable_whitelist())))
         self.ed_out.setText(s.value("outdir", str(Path.home() / "CAD-QM-Ausgabe")))
+        self.cmb_wl.setCurrentIndex(int(s.value("wl_mode", 0)))
+        self.sl_zoom.setValue(int(s.value("zoom", 100)))
+        self._update_hint()
 
     def _save_settings(self):
         s = self.settings
         for sp, k in ((self.sp_warn, "warn"), (self.sp_err, "err"), (self.sp_tt_warn, "ttwarn"), (self.sp_tt_err, "tterr"), (self.sp_contrast, "contrast")):
             s.setValue("th/" + k, sp.value())
         s.setValue("whitelist", self.ed_white.text()); s.setValue("outdir", self.ed_out.text())
+        s.setValue("wl_mode", self.cmb_wl.currentIndex()); s.setValue("zoom", self.sl_zoom.value())
 
     def closeEvent(self, e):
         self._save_settings()
@@ -243,6 +263,11 @@ class MainWindow(QMainWindow):
     def _signature(self):
         return (tuple(self.files), self.cb_overlap.isChecked(), self.cb_spell.isChecked(), self.cb_cons.isChecked(),
                 round(self.sp_contrast.value(), 3), self.ed_white.text())
+
+    def _update_hint(self):
+        wl = {0: "<b>2</b> = Fehlalarm", 1: "<b>1</b> = annehmen", 2: None}[self.cmb_wl.currentIndex()]
+        extra = f"<br>Bei Rechtschreibung nimmt {wl} das Wort direkt in die Whitelist auf." if wl else ""
+        self.hint.setText("<small>Tasten: <b>1</b> annehmen · <b>2</b> Fehlalarm · <b>Backspace</b> zurücksetzen · ↑/↓ blättern (Tabelle)" + extra + "</small>")
 
     def _settings_changed(self, *_):
         self._update_state()
@@ -412,7 +437,7 @@ class MainWindow(QMainWindow):
             return
         path, f = sel
         try:
-            self.lbl_prev.setPixmap(render_preview(path, f.page, f.bbox, self.cfg["markup"]["colors"][f.type]))
+            self.lbl_prev.setPixmap(render_preview(path, f.page, f.bbox, self.cfg["markup"]["colors"][f.type], zoom_factor=self.sl_zoom.value() / 100.0))
         except Exception as e:                                   # noqa: BLE001
             self.lbl_prev.setText(f"Vorschau nicht möglich: {e}")
         self.lbl_info.setText(f"<b>{f.id} – {TYPE_NAME[f.type]}</b> ({SEV_NAME[f.severity]})<br>{os.path.basename(path)}, Seite {f.page + 1}<br>"
@@ -433,6 +458,10 @@ class MainWindow(QMainWindow):
             return
         path, f = sel
         self.table.setFocus()
+        wl_verdict = {0: "false", 1: "accepted"}.get(self.cmb_wl.currentIndex())
+        if verdict and f.type == SPELLING and verdict == wl_verdict:          # Rechtschreibung: Wort ist ok -> direkt in die Whitelist
+            self._whitelist_word(path, f, verdict)
+            return
         # Befund-Eintraege, die nur wegen verschobener Cluster aehnlich sind, werden ueber den Schluessel ersetzt
         for k in [k for k, (_, bb) in self.verdicts.items() if k[0] == path and k[1] == f.type and k[2] == f.page and k[5] == f.text
                   and pymupdf.Rect(bb).intersects(pymupdf.Rect(f.bbox))]:
@@ -458,19 +487,43 @@ class MainWindow(QMainWindow):
 
     def add_to_whitelist(self):
         sel = self._selected()
-        if not sel or sel[1].type != SPELLING:
-            return
-        word = sel[1].text.strip()
-        path = self.ed_white.text().strip()
-        if path:
+        if sel and sel[1].type == SPELLING:
+            self._whitelist_word(sel[0], sel[1], "button")
+
+    def _whitelist_word(self, path, f: Finding, clicked):
+        """Wort in die Whitelist-Datei schreiben, alle gleichen Woerter ausblenden und zur NAECHSTEN Zeile springen."""
+        word = f.text.strip()
+        wl = self.ed_white.text().strip()
+        if wl:
             try:
-                Path(path).parent.mkdir(parents=True, exist_ok=True)
-                with open(path, "a", encoding="utf-8") as fh:
-                    fh.write(word + "\n")
+                p = Path(wl); p.parent.mkdir(parents=True, exist_ok=True)
+                have = {l.split("#")[0].strip().lower() for l in p.read_text(encoding="utf-8").splitlines()} if p.exists() else set()
+                if word.lower() not in have:
+                    with open(p, "a", encoding="utf-8") as fh:
+                        fh.write(word + "\n")
             except OSError as e:
                 QMessageBox.warning(self, "CAD-QM", f"Whitelist nicht beschreibbar: {e}"); return
+        self.whitelist_actions.append({"word": word, "plan": Path(path).stem, "context": f.extra.get("context", ""), "layer": f.extra.get("layer", ""),
+                                       "suggestions": f.extra.get("suggestions", []), "kind": f.kind, "clicked": clicked})
+        # naechste Zeile merken, die nicht dasselbe Wort ist (alle Zeilen dieses Worts verschwinden)
+        r = self.table.currentRow(); next_key = None
+        for rr in range(r + 1, self.table.rowCount()):
+            p2, f2 = self.view[self.table.item(rr, 0).data(Qt.UserRole)]
+            if not (f2.type == SPELLING and f2.text.lower() == word.lower()):
+                next_key = self._key(p2, f2); break
         self.session_whitelist.add(word.lower())
         self.refresh()
+        target = None
+        if next_key:
+            for rr in range(self.table.rowCount()):
+                p2, f2 = self.view[self.table.item(rr, 0).data(Qt.UserRole)]
+                if self._key(p2, f2) == next_key:
+                    target = rr; break
+        if target is None and self.table.rowCount():
+            target = min(r, self.table.rowCount() - 1)
+        if target is not None:
+            self.table.selectRow(target); self.table.scrollToItem(self.table.item(target, 0))
+        self.table.setFocus()
         self.lbl_status.setText(f"„{word}“ zur Whitelist hinzugefügt")
 
     # ---------------------------------------------------------------------- Export
@@ -496,7 +549,9 @@ class MainWindow(QMainWindow):
                     "Rechtschreibung": json.dumps(c["spelling"], ensure_ascii=False), "Whitelist-Datei": f"{wl} ({len(words)} Wörter)",
                     "Konsolidität-Regeln": json.dumps(c["consistency"]["rules"], ensure_ascii=False),
                     "Rohlauf": f"Schwellen für Rohbefunde: Hinweis ab {RAW_WARN_FLOOR:g} %, Text/Text ab {RAW_TT_FLOOR:g} % (Anzeige-Schwellen oben wirken danach)"}
-        return {"settings": settings, "plans": plans, "whitelist_words": words, "files": [os.path.basename(p) for p in self.files]}
+        settings["Whitelist-Aktion"] = ["Fehlalarm (2)", "Annehmen (1)", "nur Button"][self.cmb_wl.currentIndex()]
+        return {"settings": settings, "plans": plans, "whitelist_words": words, "files": [os.path.basename(p) for p in self.files],
+                "whitelist_actions": self.whitelist_actions}
 
     def export(self):
         out = Path(self.ed_out.text().strip() or ".")

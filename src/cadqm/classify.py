@@ -42,8 +42,9 @@ class Classifier:
 
     # --- Text --------------------------------------------------------------
     def is_architect_text(self, item) -> bool:
-        if any(p in (item.layer or "") for p in self.layer_patterns):
-            return True
+        """Architekten-Text: Ebene hat Vorrang (XREF-Muster). Nur ohne Ebenen-Information (z. B. gedruckte PDFs) entscheidet die Farbe (hellgrau)."""
+        if item.layer:
+            return any(p in item.layer for p in self.layer_patterns)
         return item.color is not None and self.ink_weight(item.color) < self.arch_max_weight
 
     # --- Plankopf ----------------------------------------------------------

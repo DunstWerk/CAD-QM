@@ -124,3 +124,61 @@ def test_rating_keys_advance_and_feedback(win, tmp_path):
     assert any("covered_pct" in f["features"] for f in js["findings"] if f["kind"] == "text_ink")
     assert len(list((fb / "crops").glob("*.png"))) == sum(v != "offen" for v in verd)
     assert "Mindestkontrast" in (fb / "feedback.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(not os.path.exists(SAMPLE), reason="kein Beispielplan")
+def test_spelling_rating_whitelists_and_cursor_advances(win, tmp_path):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    win.add_paths([SAMPLE]); win.cb_overlap.setChecked(False); win.cb_cons.setChecked(False)
+    run_sync(win); win.show(); win.activateWindow(); QTest.qWaitForWindowActive(win)
+    win.cmb_type.setCurrentIndex(2)                                # nur Rechtschreibung anzeigen (run_sync prueft immer auch Ueberlappung)
+    assert win.view and all(f.type == "spelling" for _, f in win.view)
+    words = [f.text for _, f in win.view]
+    assert len(set(w.lower() for w in words)) >= 3
+    win.table.selectRow(0); win.table.setFocus()
+    first = win._selected()[1].text
+    # erster abweichender Befund hinter der Auswahl = erwartetes Ziel des Cursors
+    expected = next(f.text for _, f in win.view if f.text.lower() != first.lower())
+    QTest.keyClick(win, Qt.Key_2)                                  # Standard: Fehlalarm (2) nimmt das Wort in die Whitelist auf
+    assert first in (tmp_path / "wl.txt").read_text(encoding="utf-8")
+    assert all(f.text.lower() != first.lower() for _, f in win.rows if f.type == "spelling")           # alle gleichen Woerter verschwunden
+    assert win._selected() is not None and win._selected()[1].text == expected  # Cursor ist weitergesprungen
+    assert win.whitelist_actions and win.whitelist_actions[-1]["word"] == first
+    # Annehmen (1) bewertet normal (kein Whitelist-Eintrag)
+    before = (tmp_path / "wl.txt").read_text(encoding="utf-8")
+    cur = win._selected()[1]
+    QTest.keyClick(win, Qt.Key_1)
+    assert (tmp_path / "wl.txt").read_text(encoding="utf-8") == before and win.verdict_of(*[x for x in win.rows if x[1].text == cur.text][0]) == "accepted"
+    # Modus umstellen: Annehmen (1) nimmt das Wort auf
+    win.cmb_wl.setCurrentIndex(1)
+    w2 = win._selected()[1].text
+    QTest.keyClick(win, Qt.Key_1)
+    assert w2 in (tmp_path / "wl.txt").read_text(encoding="utf-8")
+    # Button 'Wort zur Whitelist' springt ebenfalls weiter
+    win.cmb_wl.setCurrentIndex(2)
+    w3 = win._selected()[1].text; nxt = next((f.text for _, f in win.view[win.table.currentRow() + 1:] if f.text.lower() != w3.lower()), None)
+    win.add_to_whitelist()
+    assert w3 in (tmp_path / "wl.txt").read_text(encoding="utf-8")
+    if nxt:
+        assert win._selected()[1].text == nxt
+
+
+@pytest.mark.skipif(not os.path.exists(SAMPLE), reason="kein Beispielplan")
+def test_preview_zoom_slider(win):
+    from cadqm.gui.app import render_preview
+    win.add_paths([SAMPLE]); win.cb_cons.setChecked(False); run_sync(win)
+    win.table.selectRow(0)
+    base = win.lbl_prev.pixmap().toImage()
+    win.sl_zoom.setValue(400); win._zoom_timer.stop(); win.show_preview()       # Timer-Entprellung im Test umgehen
+    assert win.lbl_zoom.text() == "400 %"
+    zoomed = win.lbl_prev.pixmap().toImage()
+    assert zoomed != base
+    win.sl_zoom.setValue(25); win.show_preview(); assert not win.lbl_prev.pixmap().isNull()
+    path, f = win._selected()                                                        # kleiner Ausschnitt zeigt weniger Seitenflaeche
+    import pymupdf
+    page = pymupdf.open(path)[f.page]
+    def area(z):
+        b = pymupdf.Rect(f.bbox); pad = max(50.0, 3.0 * max(b.width, b.height)) / z
+        return (b + (-pad * 1.6, -pad, pad * 1.6, pad)).get_area()
+    assert area(4.0) < area(1.0) < area(0.25)

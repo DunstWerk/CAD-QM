@@ -27,6 +27,7 @@ overlap:
   covered_delta: 90           # max. Kanalabweichung sichtbar vs. Textfarbe: darueber = Pixel verdeckt
   text_text_warn_pct: 20      # Boxueberlappung relativ zur kleineren Box
   text_text_error_pct: 50
+  char_overlap_min_frac: 0.25 # Buchstaben gelten als ueberlagert, wenn die Kerne sich zu >= diesem Anteil des kleineren Kerns schneiden
 
 markup:
   colors: {overlap: [1.0, 0.55, 0.0], spelling: [0.0, 0.72, 0.83], consistency: [1.0, 0.77, 0.0]}

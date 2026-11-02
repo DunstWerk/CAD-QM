@@ -8,6 +8,9 @@ from dataclasses import dataclass
 import pymupdf
 
 
+CORE_INSET = 0.22                              # Anteil je Seite, um den Buchstabenboxen verkleinert werden (Ober-/Unterlaengen ignorieren)
+
+
 @dataclass(frozen=True)
 class TextItem:
     text: str
@@ -17,6 +20,7 @@ class TextItem:
     direction: tuple[float, float]            # Schreibrichtung (dx,dy)
     source: str                               # "truetype" | "shx"
     layer: str = ""                           # OCG-/Ebenenname (leer = unbekannt)
+    chars: tuple = ()                         # Kernboxen der Buchstaben (sichtbarer Raum), nur TrueType
 
 
 def _rgb(v: int) -> tuple[float, float, float]:
@@ -40,11 +44,11 @@ def extract_truetype(page: pymupdf.Page) -> list[TextItem]:
     seen: set[tuple] = set()
     rm = page.rotation_matrix
     layers = _layer_map(page)
-    for blk in page.get_text("dict")["blocks"]:
+    for blk in page.get_text("rawdict")["blocks"]:
         for line in blk.get("lines", []):
             d = pymupdf.Point(line["dir"]) * pymupdf.Matrix(rm.a, rm.b, rm.c, rm.d, 0, 0)
             for s in line["spans"]:
-                txt = s["text"].replace("\xa0", " ").strip()
+                txt = "".join(c["c"] for c in s["chars"]).replace("\xa0", " ").strip()
                 if not txt:
                     continue
                 r = pymupdf.Rect(s["bbox"]) * rm
@@ -53,11 +57,19 @@ def extract_truetype(page: pymupdf.Page) -> list[TextItem]:
                 if key in seen:                      # doppelt gesetzter Text
                     continue
                 seen.add(key)
+                cores = []
+                for c in s["chars"]:                  # Buchstabenkerne (innen verkleinert): vergleichen Glyphen statt Zeilenkaesten
+                    if not c["c"].strip():
+                        continue
+                    cb = pymupdf.Rect(c["bbox"]) * rm
+                    cb.normalize()
+                    ix, iy = cb.width * CORE_INSET, cb.height * CORE_INSET
+                    cores.append((cb.x0 + ix, cb.y0 + iy, cb.x1 - ix, cb.y1 - iy))
                 o = s["origin"]
                 items.append(TextItem(
                     text=txt, bbox=(r.x0, r.y0, r.x1, r.y1), color=_rgb(s["color"]),
                     size=s["size"], direction=(round(d.x, 3), round(d.y, 3)), source="truetype",
-                    layer=layers.get((round(o[0], 1), round(o[1], 1)), ""),
+                    layer=layers.get((round(o[0], 1), round(o[1], 1)), ""), chars=tuple(cores),
                 ))
     return items
 

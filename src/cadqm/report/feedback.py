@@ -117,7 +117,16 @@ def _markdown(now, data, hid, ctx) -> str:
         if "crop" in r:
             L.append(f"- Bild: ![{r['id']}]({r['crop']})")
         L.append("")
-    L += ["## Unterhalb der Schwelle (nicht angezeigt)", "",
+    wa = ctx.get("whitelist_actions", [])
+    L += ["## In die Whitelist übernommene Wörter (als korrekt gewertet)", "",
+          "Diese Wörter wurden in der Sitzung per Bewertung/Button in die Whitelist aufgenommen. Die zugehörigen Befunde sind aus der Liste verschwunden, "
+          "gelten also als **Fehlalarm der Rechtschreibprüfung** (Fachwort/Eigenname), sofern nicht anders vermerkt.", ""]
+    if wa:
+        L += ["| Wort | Plan | Ebene | Kontext | ausgelöst durch |", "|---|---|---|---|---|"]
+        L += [f"| {w['word']} | {w['plan']} | {str(w.get('layer', ''))[-24:]} | {str(w.get('context', ''))[:50].replace('|', '/')} | {w['clicked']} |" for w in wa]
+    else:
+        L.append("(keine)")
+    L += ["", "## Unterhalb der Schwelle (nicht angezeigt)", "",
           f"{len(hid)} Rohbefunde lagen unter den eingestellten Schwellwerten und wurden nicht angezeigt (Liste in `feedback.json` → `hidden_below_threshold`). "
           "Sie sind **nicht bewertet** – wichtig, wenn Schwellen zu hoch gewählt waren.", ""]
     c = collections.Counter(h["kind"] for h in hid)

@@ -33,6 +33,8 @@ def text_vs_ink(path: str, pno: int, page: pymupdf.Page, items: list[TextItem], 
     for it in items:
         if it.source != "truetype" or it.color is None or cl.in_rect(it.bbox, zone):
             continue
+        if cl.is_architect_text(it):                                 # Lesbarkeit von Architekten-/XREF-Text ist nicht unser Thema
+            continue
         x0, y0, x1, y1 = (int(max(0, v * s)) for v in (it.bbox[0], it.bbox[1], it.bbox[2] + 1, it.bbox[3] + 1))
         thr = (min(it.color) * 255 + 255) / 2                        # halbe Abdeckung je Textfarbe (auch hellgrau)
         g = tmin[y0:y1, x0:x1] < thr
@@ -69,7 +71,27 @@ def _sat(img: np.ndarray) -> np.ndarray:
     return (img.max(axis=2).astype(np.int16) - img.min(axis=2)) > 64
 
 
+def _core_overlap(a: TextItem, b: TextItem, min_frac: float) -> float:
+    """Anteil der Buchstaben des KUERZEREN Textes, deren Kern einen Buchstabenkern des anderen Textes ueberdeckt (0..100)."""
+    if not a.chars or not b.chars:                                   # SHX (keine Buchstaben): Boxvergleich
+        ia = box(*a.bbox).intersection(box(*b.bbox)).area
+        sm = min(box(*a.bbox).area, box(*b.bbox).area)
+        return 100.0 * ia / sm if sm > 0 else 0.0
+    small, big = (a, b) if len(a.chars) <= len(b.chars) else (b, a)
+    hit = 0
+    for c in small.chars:
+        ca = max((c[2] - c[0]) * (c[3] - c[1]), 1e-6)
+        for d in big.chars:
+            w = min(c[2], d[2]) - max(c[0], d[0])
+            h = min(c[3], d[3]) - max(c[1], d[1])
+            if w > 0 and h > 0 and w * h >= min_frac * min(ca, max((d[2] - d[0]) * (d[3] - d[1]), 1e-6)):
+                hit += 1
+                break
+    return 100.0 * hit / max(len(small.chars), 1)
+
+
 def text_vs_text(pno: int, items: list[TextItem], cl: Classifier, cfg: dict, zone: tuple) -> list[Finding]:
+    """Text ueber Text: Buchstabenkerne statt Zeilenkaesten (eng gesetzte/gedrehte Zeilen ueberlappen als Kasten, nicht als Schrift)."""
     o = cfg["overlap"]
     cand = [i for i in items if not cl.in_rect(i.bbox, zone) and (i.color is None or cl.ink_weight(i.color) >= o["min_text_weight"])]
     boxes = [box(*i.bbox) for i in cand]
@@ -79,16 +101,19 @@ def text_vs_text(pno: int, items: list[TextItem], cl: Classifier, cfg: dict, zon
         for b in tree.query(boxes[a]):
             if b <= a:
                 continue
-            inter = boxes[a].intersection(boxes[b]).area
-            small = min(boxes[a].area, boxes[b].area)
-            if small <= 0:
+            ib = cand[b]
+            if ia.text == ib.text and boxes[a].intersection(boxes[b]).area >= 0.8 * min(boxes[a].area, boxes[b].area):
+                continue                                             # doppelt gesetzter, identischer Text: kein Lesbarkeitsproblem
+            if cl.is_architect_text(ia) and cl.is_architect_text(ib):  # beide vom Architekten: nicht unser Thema
                 continue
-            ratio = 100.0 * inter / small
+            if any(len(t.text) == 1 and not t.text.isalnum() for t in (ia, ib)):    # einzelnes Satzzeichen ('-', '.', '/') beruehrt Nachbarn: normal
+                continue
+            ratio = _core_overlap(ia, ib, o["char_overlap_min_frac"])
             sev = _sev(ratio, {"warn_pct": o["text_text_warn_pct"], "error_pct": o["text_text_error_pct"]})
             if sev:
                 u = boxes[a].union(boxes[b]).bounds
-                out.append(Finding(OVERLAP, pno, u, sev, round(ratio, 1), f"{ia.text} / {cand[b].text}",
+                out.append(Finding(OVERLAP, pno, u, sev, round(ratio, 1), f"{ia.text} / {ib.text}",
                                    "Texte überlagern sich", "text_text",
-                                   extra={"texts": [ia.text, cand[b].text], "font_sizes": [round(ia.size, 1), round(cand[b].size, 1)],
-                                          "layers": [ia.layer, cand[b].layer], "sources": [ia.source, cand[b].source]}))
+                                   extra={"texts": [ia.text, ib.text], "font_sizes": [round(ia.size, 1), round(ib.size, 1)],
+                                          "layers": [ia.layer, ib.layer], "sources": [ia.source, ib.source], "method": "char_cores"}))
     return out
