@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pymupdf
 import pytest
 from cadqm.config import load_config
@@ -24,7 +26,7 @@ def make_plan(tmp_path, name, *, plannr=None, index="A", stand="18.12.2025", pro
 
 
 def kinds(res):
-    return {(k.rsplit("/", 1)[-1].replace(".pdf", ""), f.kind) for k, fs in res.items() for f in fs if f.type == "consistency"}
+    return {(Path(k).stem, f.kind) for k, fs in res.items() for f in fs if f.type == "consistency"}      # plattformunabhaengig (Windows: \\)
 
 
 def run(files):

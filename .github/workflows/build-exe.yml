@@ -30,7 +30,7 @@ jobs:
         run: python packaging/build_exe.py
       - name: Selbsttest-Ergebnis anzeigen
         if: always()
-        run: Get-Content build/selftest.txt
+        run: if (Test-Path build/selftest.txt) { Get-Content build/selftest.txt } else { 'kein Selbsttest-Ergebnis (Build nicht erreicht)' }
         shell: pwsh
       - uses: actions/upload-artifact@v4
         with:
