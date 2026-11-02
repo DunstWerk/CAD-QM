@@ -19,8 +19,14 @@ title_block:
   fallback_rect: [0.85, 0.0, 1.0, 1.0]   # Anteile (x0,y0,x1,y1), sichtbarer Raum, links oben
 
 overlap:
-  warn_pct: 10
+  warn_pct: 10                # Anteil kontrastarmer Glyphenpixel (%)
   error_pct: 25
+  contrast_min: 0.30          # |Leuchtdichte Hintergrund - Textfarbe| darunter = nicht lesbar
+  min_text_weight: 0.6        # Texte heller als dieses Tinten-Gewicht werden nicht geprueft
+  min_glyph_px: 15
+  covered_delta: 90           # max. Kanalabweichung sichtbar vs. Textfarbe: darueber = Pixel verdeckt
+  text_text_warn_pct: 20      # Boxueberlappung relativ zur kleineren Box
+  text_text_error_pct: 50
 
 markup:
   colors: {overlap: [1.0, 0.55, 0.0], spelling: [0.0, 0.72, 0.83], consistency: [1.0, 0.77, 0.0]}
