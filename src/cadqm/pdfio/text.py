@@ -84,7 +84,7 @@ def extract_shx(page: pymupdf.Page) -> list[TextItem]:
 
 
 def extract_text(page: pymupdf.Page) -> list[TextItem]:
-    """Beide Quellen; Items ausserhalb der sichtbaren Seite (abgeschnitten) entfallen."""
+    """Beide Quellen; Items, deren Mittelpunkt ausserhalb der sichtbaren Seite liegt (abgeschnitten), entfallen."""
     r = page.rect
     return [i for i in extract_truetype(page) + extract_shx(page)
-            if i.bbox[2] > r.x0 and i.bbox[0] < r.x1 and i.bbox[3] > r.y0 and i.bbox[1] < r.y1]
+            if r.x0 <= (i.bbox[0] + i.bbox[2]) / 2 <= r.x1 and r.y0 <= (i.bbox[1] + i.bbox[3]) / 2 <= r.y1]
