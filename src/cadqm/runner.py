@@ -6,13 +6,13 @@ from .checks.spelling import check_spelling, load_whitelist
 from .classify import Classifier
 from .config import load_config
 from .findings import Finding
+from .paths import app_dir
 from .pdfio.text import extract_text
 
 
 def check_pdf(path: str, cfg: dict | None = None, checks=("overlap", "spelling"), whitelist_files=()) -> list[Finding]:
     cfg = cfg or load_config()
-    root = Path(__file__).resolve().parents[2]
-    wl = load_whitelist(*[root / w for w in cfg.get("spelling", {}).get("whitelist", [])], *whitelist_files)
+    wl = load_whitelist(*[app_dir() / w for w in cfg.get("spelling", {}).get("whitelist", [])], *whitelist_files)
     doc = pymupdf.open(path)
     cl = Classifier(cfg)
     out: list[Finding] = []

@@ -1,0 +1,39 @@
+name: Windows-exe bauen
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    branches: ["claude/**"]
+    paths: ["packaging/**", ".github/workflows/build-exe.yml", "src/**", "config/**", "pyproject.toml"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Abhängigkeiten
+        run: |
+          python -m pip install -U pip
+          pip install -e ".[gui,dev]" pyinstaller
+      - name: Tests (Beispielpläne fehlen im Repo, diese Tests werden übersprungen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+      - name: exe bauen + Selbsttest der exe
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python packaging/build_exe.py
+      - name: Selbsttest-Ergebnis anzeigen
+        if: always()
+        run: Get-Content build/selftest.txt
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CAD-QM-windows
+          path: dist/CAD-QM-windows.zip
+          if-no-files-found: error

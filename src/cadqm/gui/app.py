@@ -22,6 +22,7 @@ from ..report.listing import write_xlsx
 from ..report.feedback import write_feedback
 from ..report.markup import TYPE_NAME, add_markup, add_summary
 from ..runner import Cancelled, check_set_files
+from ..paths import writable_whitelist
 from ..thresholds import apply_thresholds, below_threshold
 
 RAW_WARN_FLOOR, RAW_TT_FLOOR = 1.0, 5.0        # Rohlauf mit sehr niedrigen Schwellen; die GUI stuft danach live ein
@@ -211,8 +212,7 @@ class MainWindow(QMainWindow):
             v = s.value("th/" + k)
             if v is not None:
                 sp.setValue(float(v))
-        root = Path(__file__).resolve().parents[3]
-        self.ed_white.setText(s.value("whitelist", str(root / "config" / "whitelist.txt")))
+        self.ed_white.setText(s.value("whitelist", str(writable_whitelist())))
         self.ed_out.setText(s.value("outdir", str(Path.home() / "CAD-QM-Ausgabe")))
 
     def _save_settings(self):
@@ -532,10 +532,33 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "CAD-QM", f"{len(keep)} Befunde exportiert nach:\n{out}" + (f"\n\nFeedback für die Kalibrierung:\n{fb}" if fb else ""))
 
 
+def _install_crash_handler():
+    """Fenster-exe hat keine Konsole: Fehler in error.log schreiben und anzeigen."""
+    import traceback
+    from ..paths import user_dir
+
+    def hook(et, ev, tb):
+        txt = "".join(traceback.format_exception(et, ev, tb))
+        try:
+            with open(user_dir() / "error.log", "a", encoding="utf-8") as fh:
+                fh.write(txt + "\n")
+        except OSError:
+            pass
+        if QApplication.instance():
+            QMessageBox.critical(None, "CAD-QM – unerwarteter Fehler", f"{ev}\n\nDetails: {user_dir() / 'error.log'}")
+    sys.excepthook = hook
+
+
 def main(argv=None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv[1:])
+    if "--selftest" in args or "--selftest-out" in args:
+        from ..selftest import run
+        out = args[args.index("--selftest-out") + 1] if "--selftest-out" in args else None
+        return run(out)
+    _install_crash_handler()
     app = QApplication(sys.argv if argv is None else argv)
     w = MainWindow()
-    w.add_paths([a for a in (argv or sys.argv)[1:] if a.lower().endswith(".pdf")])
+    w.add_paths([a for a in args if a.lower().endswith(".pdf")])
     w.show()
     return app.exec()
 

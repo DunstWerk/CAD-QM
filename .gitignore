@@ -7,3 +7,5 @@ out/
 # Kundenplaene nicht committen
 tests/data/*.pdf
 *.pdf
+dist/
+build/
