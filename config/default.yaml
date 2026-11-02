@@ -1,0 +1,24 @@
+# Farbklassifikation (RGB 0..1). Alles, was R=G=B und nicht (nahezu) schwarz ist, gilt als Architekt.
+colors:
+  ours:            # unsere Planung: Schwarz + Gewerkefarben
+    - [0.0, 0.0, 0.0]
+    - [0.0, 0.52, 0.0]
+    - [0.0, 0.0, 1.0]
+    - [1.0, 0.0, 0.0]
+    - [1.0, 0.0, 0.75]
+    - [0.07, 0.525, 0.34]
+  tolerance: 0.06
+  gray_black_cutoff: 0.12   # Grau darunter zaehlt als Schwarz (= unsere Planung)
+  gray_white_cutoff: 0.97   # Grau darueber zaehlt als Weiss/Hintergrund
+
+# Ausschlusszonen als Anteil der Seite (x0,y0,x1,y1 in 0..1, Ansicht nach Rotation, Ursprung links oben)
+exclude_zones:
+  - name: Plankopf_Legende
+    rect: [0.885, 0.0, 1.0, 1.0]
+
+overlap:
+  warn_pct: 10
+  error_pct: 25
+
+markup:
+  colors: {overlap: [1.0, 0.55, 0.0], spelling: [0.0, 0.72, 0.83], consistency: [1.0, 0.77, 0.0]}

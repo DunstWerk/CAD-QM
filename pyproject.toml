@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cadqm"
+version = "0.1.0"
+description = "Lokale QM-Pruefung fuer PDF-CAD-Plaene (Ueberlagerung, Rechtschreibung, Konsolidaet)"
+requires-python = ">=3.10"
+dependencies = ["pymupdf>=1.24", "shapely>=2.0", "numpy", "opencv-python-headless", "spylls", "openpyxl", "pyyaml"]
+
+[project.optional-dependencies]
+dev = ["pytest", "reportlab"]
+gui = ["PySide6"]
+
+[project.scripts]
+cadqm = "cadqm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
