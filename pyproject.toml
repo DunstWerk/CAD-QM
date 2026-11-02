@@ -11,10 +11,13 @@ dependencies = ["pymupdf>=1.24", "shapely>=2.0", "numpy", "opencv-python-headles
 
 [project.optional-dependencies]
 dev = ["pytest", "reportlab"]
-gui = ["PySide6"]
+gui = ["PySide6-Essentials"]
 
 [project.scripts]
 cadqm = "cadqm.cli:main"
+
+[project.gui-scripts]
+cadqm-gui = "cadqm.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

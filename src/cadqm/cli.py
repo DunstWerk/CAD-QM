@@ -21,7 +21,11 @@ def main(argv=None) -> int:
     w.add_argument("pdf", help="PDF-Datei oder Ordner"); w.add_argument("--config"); w.add_argument("--top", type=int, default=80)
     g = sub.add_parser("eval-gt", help="Befunde gegen von Hand markierte Stellen (alt-/neu-PDF) auswerten")
     g.add_argument("old_dir"); g.add_argument("new_dir"); g.add_argument("--config"); g.add_argument("--radius", type=float, default=12.0)
+    sub.add_parser("gui", help="Oberflaeche starten")
     a = ap.parse_args(argv)
+    if a.cmd == "gui":
+        from .gui.app import main as gui_main
+        return gui_main()
     if a.cmd == "debug":
         page = pymupdf.open(a.pdf)[0]
         print(debug_png(page, load_config(a.config), a.out, a.scale))

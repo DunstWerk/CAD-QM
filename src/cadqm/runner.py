@@ -42,14 +42,29 @@ def ground_truth(old: str, new: str) -> list[tuple[float, float, float, float]]:
     return gt
 
 
+class Cancelled(Exception):
+    pass
+
+
 def check_set_files(paths: list[str], cfg: dict | None = None, checks=("overlap", "spelling", "consistency"),
-                    whitelist_files=()) -> dict[str, list[Finding]]:
+                    whitelist_files=(), progress=None, cancelled=None) -> dict[str, list[Finding]]:
     """Alle Pruefungen fuer mehrere PDFs; Konsolidität laeuft ueber den ganzen Satz. Rueckgabe: Pfad -> Befunde."""
     import os
     from .checks.consistency import build_info, check_set
     cfg = cfg or load_config()
-    res = {str(p): check_pdf(str(p), cfg, tuple(c for c in checks if c != "consistency"), whitelist_files) for p in paths}
+    steps = len(paths) + ("consistency" in checks)
+    res: dict[str, list[Finding]] = {}
+    for n, p in enumerate(paths):
+        if cancelled and cancelled():
+            raise Cancelled()
+        if progress:
+            progress(n, steps, f"Prüfe {os.path.basename(str(p))} …")
+        res[str(p)] = check_pdf(str(p), cfg, tuple(c for c in checks if c != "consistency"), whitelist_files)
+    if cancelled and cancelled():
+        raise Cancelled()
     if "consistency" in checks and cfg.get("consistency"):
+        if progress:
+            progress(len(paths), steps, "Konsolidität über den Plansatz …")
         cl = Classifier(cfg); infos = []
         for p in paths:
             doc = pymupdf.open(p)
@@ -59,4 +74,6 @@ def check_set_files(paths: list[str], cfg: dict | None = None, checks=("overlap"
                                         stem if len(doc) == 1 else f"{stem}[{pno + 1}]"))
         for (path, _), fs in check_set(infos, cfg).items():
             res[path] += fs
+    if progress:
+        progress(steps, steps, "Fertig")
     return res
