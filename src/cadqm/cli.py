@@ -15,6 +15,10 @@ def main(argv=None) -> int:
     c = sub.add_parser("check", help="Plan pruefen und Befunde ausgeben")
     c.add_argument("pdf", help="PDF-Datei oder Ordner"); c.add_argument("--config"); c.add_argument("--top", type=int, default=30)
     c.add_argument("--out", help="Ausgabeordner: markierte PDFs + QM_Befunde.xlsx")
+    c.add_argument("--whitelist", action="append", default=[], help="Zusaetzliche Wortliste (eine Zeile pro Wort)")
+    c.add_argument("--only", choices=["overlap", "spelling"], help="Nur diese Pruefung")
+    w = sub.add_parser("words", help="Haeufigste unbekannte Woerter (Vorlage fuer die Whitelist)")
+    w.add_argument("pdf", help="PDF-Datei oder Ordner"); w.add_argument("--config"); w.add_argument("--top", type=int, default=80)
     g = sub.add_parser("eval-gt", help="Befunde gegen von Hand markierte Stellen (alt-/neu-PDF) auswerten")
     g.add_argument("old_dir"); g.add_argument("new_dir"); g.add_argument("--config"); g.add_argument("--radius", type=float, default=12.0)
     a = ap.parse_args(argv)
@@ -39,7 +43,7 @@ def main(argv=None) -> int:
         files = sorted(src.glob("*.pdf")) if src.is_dir() else [src]
         rows = []
         for f in files:
-            fs = cluster(check_pdf(str(f), cfg))
+            fs = cluster(check_pdf(str(f), cfg, checks=(a.only,) if a.only else ("overlap", "spelling"), whitelist_files=a.whitelist))
             print(f"{f.name}: {len(fs)} Befunde ({sum(x.severity == 'error' for x in fs)} Fehler)")
             for x in fs[: a.top if not a.out else 0]:
                 print(f"  {x.id} {x.severity:5s} {x.kind:9s} {x.value:5.1f}%  {[round(v) for v in x.bbox]}  {x.text[:50]!r}")
@@ -52,6 +56,15 @@ def main(argv=None) -> int:
         if a.out:
             write_xlsx(rows, str(pathlib.Path(a.out) / "QM_Befunde.xlsx"))
             print(f"-> {a.out}")
+    if a.cmd == "words":
+        import collections, pathlib
+        from .runner import check_pdf
+        src = pathlib.Path(a.pdf); files = sorted(src.glob("*.pdf")) if src.is_dir() else [src]
+        cnt = collections.Counter()
+        for f in files:
+            cnt.update(x.text for x in check_pdf(str(f), load_config(a.config), checks=("spelling",)))
+        for word, n in cnt.most_common(a.top):
+            print(f"{n:4d}  {word}")
     if a.cmd == "eval-gt":
         import pathlib, time
         from .runner import check_pdf, ground_truth

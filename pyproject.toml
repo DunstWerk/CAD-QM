@@ -19,5 +19,8 @@ cadqm = "cadqm.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+cadqm = ["data/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

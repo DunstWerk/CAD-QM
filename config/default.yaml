@@ -30,3 +30,12 @@ overlap:
 
 markup:
   colors: {overlap: [1.0, 0.55, 0.0], spelling: [0.0, 0.72, 0.83], consistency: [1.0, 0.77, 0.0]}
+
+spelling:
+  enabled: true
+  min_len: 3
+  abbrev_max_len: 4          # GROSSGESCHRIEBENE Woerter bis zu dieser Laenge = Kuerzel, nicht pruefen
+  typo_min_len: 6            # kuerzere Woerter nie als 'Fehler', nur als Hinweis
+  typo_distance: 2           # Vorschlag mit Editierabstand <= : "Fehler" (wahrscheinlicher Tippfehler), sonst "Hinweis"
+  skip_single_letter_neighbours: true
+  whitelist: ["config/whitelist.txt"]   # eine Zeile pro Wort, '#' = Kommentar; zusaetzlich --whitelist
